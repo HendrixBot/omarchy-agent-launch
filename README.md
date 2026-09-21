@@ -24,6 +24,15 @@ omarchy plugin add https://github.com/HendrixBot/omarchy-agent-launch.git --enab
 Click the `AI` bar button, select an installed agent, and it opens in a
 terminal. `j`/`k` navigate, Enter launches, and Esc closes.
 
+## Remove
+
+```sh
+omarchy plugin remove hippie.agent-launch
+```
+
+Removal deletes only this plugin checkout. It does not remove agent CLIs,
+change your default agent, or alter agent accounts and credentials.
+
 ## Privacy
 
 Agent Launch only checks which supported commands are available on `PATH` and

@@ -18,7 +18,7 @@ Copilot, Pi, Oh My Pi, Crush, and OpenClaw—when installed on `PATH`.
 ## Install
 
 ```sh
-omarchy plugin add https://github.com/USER/omarchy-agent-launch.git --enable
+omarchy plugin add https://github.com/HendrixBot/omarchy-agent-launch.git --enable
 ```
 
 Click the `AI` bar button, select an installed agent, and it opens in a

@@ -1,0 +1,27 @@
+#!/bin/bash
+# Print "id|label|installed" lines for known agents.
+set -euo pipefail
+agents=(
+  "cursor-agent|Cursor CLI"
+  "claude|Claude Code"
+  "codex|Codex"
+  "grok|Grok"
+  "hermes|Hermes"
+  "opencode|OpenCode"
+  "gemini|Gemini"
+  "muse|Muse"
+  "copilot|GitHub Copilot"
+  "pi|Pi"
+  "omp|Oh My Pi"
+  "crush|Crush"
+  "openclaw|OpenClaw"
+)
+for entry in "${agents[@]}"; do
+  id=${entry%%|*}
+  label=${entry#*|}
+  if command -v "$id" >/dev/null 2>&1; then
+    echo "${id}|${label}|1"
+  else
+    echo "${id}|${label}|0"
+  fi
+done

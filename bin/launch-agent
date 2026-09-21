@@ -1,0 +1,39 @@
+#!/bin/bash
+# Launch a named Omarchy coding agent without changing the default.
+set -euo pipefail
+
+agent=${1:-}
+if [[ -z $agent ]]; then
+  echo "Usage: launch-agent <claude|codex|cursor-agent|grok|hermes|...>" >&2
+  exit 1
+fi
+
+# Same workdir rule as omarchy-agent.
+[[ ${PWD:-} == "$HOME" && -d $HOME/Work ]] && cd "$HOME/Work"
+
+if ! command -v "$agent" >/dev/null 2>&1; then
+  echo "$agent is not installed or not on PATH." >&2
+  exit 1
+fi
+
+case "$agent" in
+  opencode) command=(opencode --auto) ;;
+  gemini) command=(gemini --yolo) ;;
+  copilot) command=(copilot --allow-all) ;;
+  crush) command=(crush --yolo) ;;
+  claude) command=(claude --permission-mode auto) ;;
+  grok) command=(grok --permission-mode bypassPermissions) ;;
+  openclaw) command=(omarchy-launch-openclaw --tui) ;;
+  codex) command=(codex --approve-for-me) ;;
+  cursor-agent) command=(cursor-agent --yolo --trust) ;;
+  hermes) command=(hermes --yolo) ;;
+  muse) command=(muse --approval-mode never) ;;
+  omp) command=(omp --auto-approve) ;;
+  pi) command=(pi) ;;
+  *)
+    echo "Unsupported agent: $agent" >&2
+    exit 1
+    ;;
+esac
+
+exec omarchy-launch-tui --app-id=org.omarchy.agent "${command[@]}"

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "hippie.agent-launch",
+  "name": "Agent Launch",
+  "version": "1.0.0",
+  "author": "Hendrix",
+  "license": "MIT",
+  "description": "Hendrix's one-click command deck for installed coding agents — launch the right co-pilot without changing your default.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Agent Launch",
+    "description": "Hendrix's one-click agent command deck — pick an installed co-pilot and launch.",
+    "category": "AI",
+    "aliases": ["launch", "agents-launch", "start-agent"],
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

@@ -1,2 +1,0 @@
-#!/bin/bash
-omarchy-default-agent 2>/dev/null || true

@@ -20,7 +20,8 @@ Panel {
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-  readonly property string pluginDir: Qt.resolvedUrl(".").toString().replace(/^file:\/\//, "").replace(/\/$/, "")
+  // Resolved URLs are percent-encoded; argv needs the plain path.
+  readonly property string pluginDir: decodeURIComponent(Qt.resolvedUrl(".").toString().replace(/^file:\/\//, "").replace(/\/$/, ""))
   readonly property var installedAgents: {
     var out = []
     for (var i = 0; i < agents.length; i++)
@@ -41,29 +42,43 @@ Panel {
     cursorIndex = Math.max(0, Math.min(cursorIndex, Math.max(0, installedAgents.length - 1)))
   }
 
+  // Park the hidden cursor on the default agent so the first j/k reveals it
+  // there, like the stock power panel does with the active profile.
+  function resetCursor() {
+    if (cursorActive) return
+    cursorIndex = 0
+    for (var i = 0; i < installedAgents.length; i++)
+      if (installedAgents[i].id === defaultAgent) cursorIndex = i
+  }
+
   function moveCursor(dy) {
     if (installedAgents.length === 0) return
-    cursorActive = true
+    if (!cursorActive) { cursorActive = true; return }
     cursorIndex += dy
     clampCursor()
   }
 
   function launchAt(index) {
     if (index < 0 || index >= installedAgents.length) return
-    var agent = installedAgents[index]
-    Quickshell.execDetached([pluginDir + "/bin/launch-agent", agent.id])
+    // Login shell like bar.run/omarchy-agent: same PATH, and cwd stays the
+    // shell's so launch-agent's $HOME -> ~/Work rule applies.
+    Util.execArgv([pluginDir + "/bin/launch-agent", installedAgents[index].id])
     root.close()
   }
 
   function launchSelected() {
+    if (!cursorActive) return
     clampCursor()
     launchAt(cursorIndex)
   }
 
+  onInstalledAgentsChanged: { clampCursor(); resetCursor() }
+  onDefaultAgentChanged: resetCursor()
+
   onOpenedChanged: {
     if (opened) {
       cursorActive = false
-      cursorIndex = 0
+      resetCursor()
       refresh()
       Qt.callLater(function() { keyCatcher.forceActiveFocus() })
     }
@@ -91,14 +106,13 @@ Panel {
           })
         }
         root.agents = next
-        root.clampCursor()
       }
     }
   }
 
   Process {
     id: defaultProc
-    command: [root.pluginDir + "/bin/default-agent"]
+    command: ["omarchy-default-agent"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.defaultAgent = String(text || "").trim()
@@ -222,7 +236,7 @@ Panel {
         Text {
           width: parent.width
           wrapMode: Text.WordWrap
-          text: "Click or Enter to open. j/k to move. Esc to close."
+          text: "Click to open, or j/k then Enter. Esc to close."
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.bodySmall

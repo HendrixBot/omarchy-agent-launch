@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+# Summarise recent local usage for supported agents as one JSON object.
+#
+# Reads only session metadata — timestamps, session ids and token counts —
+# from each agent's own local files. Prompt and response text is never kept
+# or printed, and nothing leaves the machine.
+import datetime
+import glob
+import json
+import os
+import re
+import sqlite3
+import sys
+
+DAYS = 7
+HOME = os.path.expanduser("~")
+today = datetime.date.today()
+window = [today - datetime.timedelta(days=DAYS - 1 - i) for i in range(DAYS)]
+window_start = datetime.datetime.combine(window[0], datetime.time()).timestamp()
+
+
+def day_index(epoch):
+    i = (datetime.date.fromtimestamp(epoch) - window[0]).days
+    return i if 0 <= i < DAYS else None
+
+
+def parse_iso(value):
+    if not isinstance(value, str):
+        return None
+    # Grok writes nanoseconds; fromisoformat accepts at most microseconds.
+    value = re.sub(r"(\.\d{6})\d+", r"\1", value.replace("Z", "+00:00"))
+    try:
+        return datetime.datetime.fromisoformat(value).timestamp()
+    except ValueError:
+        return None
+
+
+class Usage:
+    def __init__(self, tracks_tokens):
+        self.daily = [set() for _ in range(DAYS)]
+        self.daily_tokens = [0] * DAYS if tracks_tokens else None
+        self.last_used = 0
+        self.total_sessions = 0
+
+    def touch(self, session, epoch, tokens=0):
+        i = day_index(epoch)
+        if i is None:
+            return
+        self.daily[i].add(session)
+        if self.daily_tokens is not None:
+            self.daily_tokens[i] += tokens
+
+    def to_json(self):
+        week = set().union(*self.daily)
+        tokens = self.daily_tokens
+        return {
+            "days": [
+                {
+                    "date": day.isoformat(),
+                    "sessions": len(self.daily[i]),
+                    "tokens": tokens[i] if tokens is not None else None,
+                }
+                for i, day in enumerate(window)
+            ],
+            "sessions": len(week),
+            "tokens": sum(tokens) if tokens is not None else None,
+            "lastUsed": int(self.last_used * 1000),
+            "totalSessions": self.total_sessions,
+        }
+
+
+def claude():
+    root = os.path.join(HOME, ".claude", "projects")
+    if not os.path.isdir(root):
+        return None
+    usage = Usage(tracks_tokens=True)
+    for path in glob.glob(os.path.join(root, "*", "*.jsonl")):
+        usage.total_sessions += 1
+        usage.last_used = max(usage.last_used, os.path.getmtime(path))
+
+    seen = set()
+    # Sub-agent transcripts live under <project>/<session>/subagents/ and
+    # count toward their parent session.
+    for path in glob.glob(os.path.join(root, "**", "*.jsonl"), recursive=True):
+        if os.path.getmtime(path) < window_start:
+            continue
+        rel = os.path.relpath(path, root).split(os.sep)
+        session = rel[1] if len(rel) > 2 else rel[1][:-len(".jsonl")]
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    if '"usage"' not in line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except ValueError:
+                        continue
+                    message = entry.get("message")
+                    if not isinstance(message, dict):
+                        continue
+                    u = message.get("usage")
+                    epoch = parse_iso(entry.get("timestamp"))
+                    if not isinstance(u, dict) or epoch is None:
+                        continue
+                    # One API response is logged once per content block.
+                    key = (message.get("id"), entry.get("requestId"))
+                    if key != (None, None):
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                    tokens = sum(int(u.get(k) or 0) for k in (
+                        "input_tokens", "cache_creation_input_tokens", "output_tokens"))
+                    usage.touch(session, epoch, tokens)
+        except OSError:
+            continue
+    return usage
+
+
+def codex():
+    db = os.path.join(HOME, ".codex", "state_5.sqlite")
+    if not os.path.exists(db):
+        return None
+    usage = Usage(tracks_tokens=True)
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=1)
+        try:
+            rows = con.execute(
+                "SELECT id, updated_at, tokens_used FROM threads").fetchall()
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return usage
+    for thread, updated, tokens in rows:
+        usage.total_sessions += 1
+        usage.last_used = max(usage.last_used, updated or 0)
+        usage.touch(thread, updated or 0, int(tokens or 0))
+    return usage
+
+
+def grok():
+    root = os.path.join(HOME, ".grok", "sessions")
+    if not os.path.isdir(root):
+        return None
+    # Grok does not record token counts locally.
+    usage = Usage(tracks_tokens=False)
+    for path in glob.glob(os.path.join(root, "*", "*", "summary.json")):
+        try:
+            with open(path, encoding="utf-8") as f:
+                summary = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if not summary.get("num_chat_messages"):
+            continue
+        session = (summary.get("info") or {}).get("id") or path
+        created = parse_iso(summary.get("created_at"))
+        active = parse_iso(summary.get("last_active_at") or summary.get("updated_at"))
+        usage.total_sessions += 1
+        usage.last_used = max(usage.last_used, active or created or 0)
+        for epoch in (created, active):
+            if epoch is not None:
+                usage.touch(session, epoch)
+    return usage
+
+
+def main():
+    out = {"agents": {}}
+    for agent, collect in (("claude", claude), ("codex", codex), ("grok", grok)):
+        try:
+            usage = collect()
+        except Exception as error:  # Never break the panel over one agent.
+            print(f"{agent}: {error}", file=sys.stderr)
+            continue
+        if usage is not None:
+            out["agents"][agent] = usage.to_json()
+    json.dump(out, sys.stdout)
+
+
+if __name__ == "__main__":
+    main()

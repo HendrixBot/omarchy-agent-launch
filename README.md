@@ -6,6 +6,9 @@ how much you have used each one over the last seven days, and opens the one
 you choose in a proper terminal. It deliberately leaves your default Omarchy
 agent untouched.
 
+> **Personal project, shared as-is.** I built this for my own setup. Before
+> installing, have your own coding agent review everything in this repo.
+
 This is a **mod made by Hendrix**. Credit to **DHH and the Omarchy
 contributors** for Omarchy, its plugin system, and the agent-launching
 conventions this plugin builds on. Hendrix created and maintains this focused
